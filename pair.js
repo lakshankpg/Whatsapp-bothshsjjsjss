@@ -41,6 +41,7 @@ const config = {
     OTP_EXPIRY: 300000,
     OWNER_NUMBER: '94762731899,94707085822,9472 664 5160',
     CHANNEL_LINK: 'https://whatsapp.com/channel/0029VbC1S2nEquiQQ5TA1u31',
+    CAPTION: '𝐏𝙾𝚆𝙴𝚁𝙳 𝐁𝚈 DXLK Mini Bot',
     
     // New Settings Configuration
     BOT_SETTINGS: {
@@ -67,7 +68,10 @@ const config = {
         autoSave: 'on',
         userLimit: 50,
         cooldown: 3,
-        maintenance: 'off'
+        maintenance: 'off',
+        groupWelcome: 'on',
+        groupGoodbye: 'on',
+        botName: 'DXLK Mini Bot'
     },
     DISABLED_COMMANDS: []
 };
@@ -81,8 +85,11 @@ const socketCreationTime = new Map();
 const SESSION_BASE_PATH = './session';
 const NUMBER_LIST_PATH = './numbers.json';
 const SETTINGS_PATH = './bot_settings.json';
+const GROUP_SETTINGS_PATH = './group_settings.json';
 const otpStore = new Map();
 const userCooldowns = new Map();
+const groupSettings = new Map();
+const spamUsers = new Map();
 
 if (!fs.existsSync(SESSION_BASE_PATH)) {
     fs.mkdirSync(SESSION_BASE_PATH, { recursive: true });
@@ -102,6 +109,20 @@ function loadBotSettings() {
     }
 }
 
+// Load group settings
+function loadGroupSettings() {
+    try {
+        if (fs.existsSync(GROUP_SETTINGS_PATH)) {
+            const settings = JSON.parse(fs.readFileSync(GROUP_SETTINGS_PATH, 'utf8'));
+            settings.forEach(setting => {
+                groupSettings.set(setting.groupId, setting);
+            });
+        }
+    } catch (error) {
+        console.error('Failed to load group settings:', error);
+    }
+}
+
 // Save bot settings
 function saveBotSettings() {
     try {
@@ -114,8 +135,22 @@ function saveBotSettings() {
     }
 }
 
+// Save group settings
+function saveGroupSettings() {
+    try {
+        const settings = [];
+        groupSettings.forEach((value, key) => {
+            settings.push({ groupId: key, ...value });
+        });
+        fs.writeFileSync(GROUP_SETTINGS_PATH, JSON.stringify(settings, null, 2));
+    } catch (error) {
+        console.error('Failed to save group settings:', error);
+    }
+}
+
 // Initialize settings
 loadBotSettings();
+loadGroupSettings();
 
 function loadAdmins() {
     try {
@@ -168,14 +203,12 @@ function checkSpam(userId) {
     const now = Date.now();
     const userSpamKey = `spam_${userId}`;
     
-    if (!global.spamTracker) global.spamTracker = new Map();
-    
-    if (global.spamTracker.has(userSpamKey)) {
-        const { count, firstTime } = global.spamTracker.get(userSpamKey);
+    if (spamUsers.has(userSpamKey)) {
+        const { count, firstTime } = spamUsers.get(userSpamKey);
         
         // Reset if more than 1 minute passed
         if (now - firstTime > 60000) {
-            global.spamTracker.set(userSpamKey, { count: 1, firstTime: now });
+            spamUsers.set(userSpamKey, { count: 1, firstTime: now });
             return false;
         }
         
@@ -184,12 +217,24 @@ function checkSpam(userId) {
             return true;
         }
         
-        global.spamTracker.set(userSpamKey, { count: count + 1, firstTime });
+        spamUsers.set(userSpamKey, { count: count + 1, firstTime });
     } else {
-        global.spamTracker.set(userSpamKey, { count: 1, firstTime: now });
+        spamUsers.set(userSpamKey, { count: 1, firstTime: now });
     }
     
     return false;
+}
+
+// Add user to spam list
+function addSpamUser(userId, groupId = null) {
+    const spamKey = `spam_${userId}${groupId ? `_${groupId}` : ''}`;
+    spamUsers.set(spamKey, { timestamp: Date.now(), count: 1 });
+}
+
+// Remove user from spam list
+function removeSpamUser(userId, groupId = null) {
+    const spamKey = `spam_${userId}${groupId ? `_${groupId}` : ''}`;
+    spamUsers.delete(spamKey);
 }
 
 async function cleanDuplicateFiles(number) {
@@ -442,48 +487,44 @@ const createSerial = (size) => {
     return crypto.randomBytes(size).toString('hex').slice(0, size);
 }
 
-async function oneViewmeg(socket, isOwner, msg ,sender) {
+async function oneViewmeg(socket, isOwner, msg, sender) {
     if (isOwner) {  
-    try {
-    const akuru = sender
-    const quot = msg
-    if (quot) {
-        if (quot.imageMessage?.viewOnce) {
-            console.log("hi");
-            let cap = quot.imageMessage?.caption || "";
-            let anu = await socket.downloadAndSaveMediaMessage(quot.imageMessage);
-            await socket.sendMessage(akuru, { image: { url: anu }, caption: cap });
-        } else if (quot.videoMessage?.viewOnce) {
-            console.log("hi");
-            let cap = quot.videoMessage?.caption || "";
-            let anu = await socket.downloadAndSaveMediaMessage(quot.videoMessage);
-             await socket.sendMessage(akuru, { video: { url: anu }, caption: cap });
-        } else if (quot.audioMessage?.viewOnce) {
-            console.log("hi");
-            let cap = quot.audioMessage?.caption || "";
-            let anu = await socket.downloadAndSaveMediaMessage(quot.audioMessage);
-             await socket.sendMessage(akuru, { audio: { url: anu }, caption: cap });
-        } else if (quot.viewOnceMessageV2?.message?.imageMessage){
-        
-            let cap = quot.viewOnceMessageV2?.message?.imageMessage?.caption || "";
-            let anu = await socket.downloadAndSaveMediaMessage(quot.viewOnceMessageV2.message.imageMessage);
-             await socket.sendMessage(akuru, { image: { url: anu }, caption: cap });
-            
-        } else if (quot.viewOnceMessageV2?.message?.videoMessage){
-        
-            let cap = quot.viewOnceMessageV2?.message?.videoMessage?.caption || "";
-            let anu = await socket.downloadAndSaveMediaMessage(quot.viewOnceMessageV2.message.videoMessage);
-            await socket.sendMessage(akuru, { video: { url: anu }, caption: cap });
-
-        } else if (quot.viewOnceMessageV2Extension?.message?.audioMessage){
-        
-            let cap = quot.viewOnceMessageV2Extension?.message?.audioMessage?.caption || "";
-            let anu = await socket.downloadAndSaveMediaMessage(quot.viewOnceMessageV2Extension.message.audioMessage);
-            await socket.sendMessage(akuru, { audio: { url: anu }, caption: cap });
-        }
-        }        
+        try {
+            const akuru = sender;
+            const quot = msg;
+            if (quot) {
+                if (quot.imageMessage?.viewOnce) {
+                    console.log("View once image detected");
+                    let cap = quot.imageMessage?.caption || "";
+                    let anu = await socket.downloadAndSaveMediaMessage(quot);
+                    await socket.sendMessage(akuru, { image: { url: anu }, caption: cap });
+                } else if (quot.videoMessage?.viewOnce) {
+                    console.log("View once video detected");
+                    let cap = quot.videoMessage?.caption || "";
+                    let anu = await socket.downloadAndSaveMediaMessage(quot);
+                    await socket.sendMessage(akuru, { video: { url: anu }, caption: cap });
+                } else if (quot.audioMessage?.viewOnce) {
+                    console.log("View once audio detected");
+                    let cap = quot.audioMessage?.caption || "";
+                    let anu = await socket.downloadAndSaveMediaMessage(quot);
+                    await socket.sendMessage(akuru, { audio: { url: anu }, caption: cap });
+                } else if (quot.viewOnceMessageV2?.message?.imageMessage) {
+                    let cap = quot.viewOnceMessageV2?.message?.imageMessage?.caption || "";
+                    let anu = await socket.downloadAndSaveMediaMessage(quot);
+                    await socket.sendMessage(akuru, { image: { url: anu }, caption: cap });
+                } else if (quot.viewOnceMessageV2?.message?.videoMessage) {
+                    let cap = quot.viewOnceMessageV2?.message?.videoMessage?.caption || "";
+                    let anu = await socket.downloadAndSaveMediaMessage(quot);
+                    await socket.sendMessage(akuru, { video: { url: anu }, caption: cap });
+                } else if (quot.viewOnceMessageV2Extension?.message?.audioMessage) {
+                    let cap = quot.viewOnceMessageV2Extension?.message?.audioMessage?.caption || "";
+                    let anu = await socket.downloadAndSaveMediaMessage(quot);
+                    await socket.sendMessage(akuru, { audio: { url: anu }, caption: cap });
+                }
+            }
         } catch (error) {
-      }
+            console.error("Error in view once handler:", error);
+        }
     }
 }
 
@@ -498,9 +539,7 @@ function setupCommandHandlers(socket, number) {
         
         const sanitizedNumber = number.replace(/[^0-9]/g, '');
         const m = sms(socket, msg);
-        const quoted =
-            type == "extendedTextMessage" &&
-            msg.message.extendedTextMessage.contextInfo != null
+        const quoted = type == "extendedTextMessage" && msg.message.extendedTextMessage?.contextInfo != null
             ? msg.message.extendedTextMessage.contextInfo.quotedMessage || []
             : [];
         
@@ -514,9 +553,9 @@ function setupCommandHandlers(socket, number) {
             ? msg.message.templateButtonReplyMessage?.selectedId 
             : (type === 'extendedTextMessage') 
             ? msg.message.extendedTextMessage.text 
-            : (type == 'imageMessage') && msg.message.imageMessage.caption 
+            : (type == 'imageMessage') && msg.message.imageMessage?.caption 
             ? msg.message.imageMessage.caption 
-            : (type == 'videoMessage') && msg.message.videoMessage.caption 
+            : (type == 'videoMessage') && msg.message.videoMessage?.caption 
             ? msg.message.videoMessage.caption 
             : (type == 'buttonsResponseMessage') 
             ? msg.message.buttonsResponseMessage?.selectedButtonId 
@@ -529,7 +568,7 @@ function setupCommandHandlers(socket, number) {
             : (type === 'viewOnceMessage') 
             ? msg.message[type]?.message[getContentType(msg.message[type].message)] 
             : (type === "viewOnceMessageV2") 
-            ? (msg.msg.message.imageMessage?.caption || msg.msg.message.videoMessage?.caption || "") 
+            ? (msg.message.imageMessage?.caption || msg.message.videoMessage?.caption || "") 
             : '';
         
         let sender = msg.key.remoteJid;
@@ -547,26 +586,25 @@ function setupCommandHandlers(socket, number) {
         const command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : '.';
         const args = body.trim().split(/ +/).slice(1);
         
+        // Helper function to reply
+        const reply = async (text) => {
+            await socket.sendMessage(sender, { text: text }, { quoted: msg });
+        };
+        
         // Check maintenance mode
         if (config.BOT_SETTINGS.maintenance === 'on' && !isOwner) {
-            return await socket.sendMessage(sender, {
-                text: '🚧 Bot is under maintenance. Please try again later.'
-            });
+            return await reply('🚧 Bot is under maintenance. Please try again later.');
         }
         
         // Check disabled commands
         if (config.DISABLED_COMMANDS.includes(command) && !isOwner) {
-            return await socket.sendMessage(sender, {
-                text: `❌ Command "${command}" is currently disabled.`
-            });
+            return await reply(`❌ Command "${command}" is currently disabled.`);
         }
         
         // Check spam protection
         if (config.BOT_SETTINGS.antiSpam === 'on' && !isOwner) {
             if (checkSpam(senderNumber)) {
-                return await socket.sendMessage(sender, {
-                    text: '⚠️ Please slow down! You\'re sending messages too quickly.'
-                });
+                return await reply('⚠️ Please slow down! You\'re sending messages too quickly.');
             }
         }
         
@@ -574,9 +612,7 @@ function setupCommandHandlers(socket, number) {
         if (!isOwner) {
             const cooldownRemaining = checkCooldown(senderNumber, command);
             if (cooldownRemaining > 0) {
-                return await socket.sendMessage(sender, {
-                    text: `⏳ Please wait ${cooldownRemaining} seconds before using "${command}" again.`
-                });
+                return await reply(`⏳ Please wait ${cooldownRemaining} seconds before using "${command}" again.`);
             }
         }
         
@@ -621,10 +657,37 @@ function setupCommandHandlers(socket, number) {
             };
             
             const lowerBody = body.toLowerCase();
-            for (const [key, reply] of Object.entries(autoReplies)) {
+            for (const [key, replyText] of Object.entries(autoReplies)) {
                 if (lowerBody.includes(key)) {
-                    await socket.sendMessage(sender, { text: reply });
+                    await socket.sendMessage(sender, { text: replyText });
                     break;
+                }
+            }
+        }
+        
+        // Group welcome/goodbye handlers
+        if (isGroup) {
+            const groupMetadata = await socket.groupMetadata(from).catch(() => null);
+            if (groupMetadata) {
+                // Check for new participants (welcome)
+                if (msg.message?.groupInviteMessage || msg.message?.protocolMessage?.type === 5) {
+                    if (config.BOT_SETTINGS.groupWelcome === 'on') {
+                        const welcomeMsg = config.BOT_SETTINGS.welcomeText || 'Welcome to the group!';
+                        await socket.sendMessage(from, { 
+                            text: `👋 @${senderNumber} ${welcomeMsg}`,
+                            mentions: [sender]
+                        });
+                    }
+                }
+                
+                // Check for leave/remove (goodbye)
+                if (msg.message?.protocolMessage?.type === 8 || msg.message?.protocolMessage?.type === 9) {
+                    if (config.BOT_SETTINGS.groupGoodbye === 'on') {
+                        const goodbyeMsg = config.BOT_SETTINGS.goodbyeText || 'Goodbye!';
+                        await socket.sendMessage(from, { 
+                            text: `👋 ${goodbyeMsg}` 
+                        });
+                    }
                 }
             }
         }
@@ -640,7 +703,7 @@ function setupCommandHandlers(socket, number) {
             }
             const FileType = require('file-type');
             let type = await FileType.fromBuffer(buffer);
-            trueFileName = attachExtension ? (filename + '.' + type.ext) : filename;
+            let trueFileName = attachExtension ? (filename + '.' + type.ext) : filename;
             await fs.writeFileSync(trueFileName, buffer);
             return trueFileName;
         };
@@ -654,7 +717,7 @@ function setupCommandHandlers(socket, number) {
 
         try {
             switch (command) {
-                // Bot Settings Commands
+                // ========== BOT SETTINGS COMMANDS ==========
                 case 'settings': {
                     const settings = config.BOT_SETTINGS;
                     
@@ -664,7 +727,8 @@ function setupCommandHandlers(socket, number) {
                             rows: [
                                 { title: 'Prefix', description: `Current: ${settings.prefix}`, id: `${prefix}setprefix ` },
                                 { title: 'Language', description: `Current: ${settings.language}`, id: `${prefix}setlang ` },
-                                { title: 'Mode', description: `Current: ${settings.mode}`, id: `${prefix}setmode ` }
+                                { title: 'Mode', description: `Current: ${settings.mode}`, id: `${prefix}setmode ` },
+                                { title: 'Bot Name', description: `Current: ${settings.botName}`, id: `${prefix}setbotname ` }
                             ]
                         },
                         {
@@ -677,10 +741,12 @@ function setupCommandHandlers(socket, number) {
                             ]
                         },
                         {
-                            title: '🛡️ GROUP PROTECTION',
+                            title: '🛡️ PROTECTION',
                             rows: [
                                 { title: 'Anti Spam', description: `Current: ${settings.antiSpam}`, id: `${prefix}setantispam ` },
-                                { title: 'Anti Link', description: `Current: ${settings.antiLink}`, id: `${prefix}setantilink ` }
+                                { title: 'Anti Link', description: `Current: ${settings.antiLink}`, id: `${prefix}setantilink ` },
+                                { title: 'Group Welcome', description: `Current: ${settings.groupWelcome}`, id: `${prefix}setgroupwelcome ` },
+                                { title: 'Group Goodbye', description: `Current: ${settings.groupGoodbye}`, id: `${prefix}setgroupgoodbye ` }
                             ]
                         },
                         {
@@ -697,7 +763,8 @@ function setupCommandHandlers(socket, number) {
                             rows: [
                                 { title: 'Backup Settings', description: 'Create backup', id: `${prefix}backup` },
                                 { title: 'Restore Settings', description: 'Restore from backup', id: `${prefix}restore` },
-                                { title: 'Reset Settings', description: 'Reset to default', id: `${prefix}resetsettings` }
+                                { title: 'Reset Settings', description: 'Reset to default', id: `${prefix}resetsettings` },
+                                { title: 'Maintenance Mode', description: `Current: ${settings.maintenance}`, id: `${prefix}setmaintenance ` }
                             ]
                         }
                     ];
@@ -728,337 +795,244 @@ function setupCommandHandlers(socket, number) {
                 }
                 
                 case 'setprefix': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change prefix!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change prefix!');
                     const newPrefix = args[0];
                     if (!newPrefix || newPrefix.length > 2) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Please provide a valid prefix (1-2 characters)\nExample: .setprefix !' 
-                        });
+                        return await reply('❌ Please provide a valid prefix (1-2 characters)\nExample: .setprefix !');
                     }
-                    
                     config.BOT_SETTINGS.prefix = newPrefix;
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Prefix changed to: \`${newPrefix}\`` 
-                    });
+                    await reply(`✅ Prefix changed to: \`${newPrefix}\``);
                     break;
                 }
                 
                 case 'setlang': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change language!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change language!');
                     const lang = args[0];
                     if (!['si', 'en'].includes(lang)) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Invalid language! Use: si (Sinhala) or en (English)' 
-                        });
+                        return await reply('❌ Invalid language! Use: si (Sinhala) or en (English)');
                     }
-                    
                     config.BOT_SETTINGS.language = lang;
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Language changed to: ${lang === 'si' ? 'Sinhala' : 'English'}` 
-                    });
+                    await reply(`✅ Language changed to: ${lang === 'si' ? 'Sinhala' : 'English'}`);
                     break;
                 }
                 
                 case 'setmode': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change mode!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change mode!');
                     const mode = args[0];
                     if (!['public', 'private'].includes(mode)) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Invalid mode! Use: public or private' 
-                        });
+                        return await reply('❌ Invalid mode! Use: public or private');
                     }
-                    
                     config.BOT_SETTINGS.mode = mode;
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Bot mode changed to: ${mode}` 
-                    });
+                    await reply(`✅ Bot mode changed to: ${mode}`);
+                    break;
+                }
+                
+                case 'setbotname': {
+                    if (!isOwner) return await reply('❌ Only bot owner can change bot name!');
+                    const name = args.join(' ');
+                    if (!name) return await reply('❌ Please provide bot name!');
+                    config.BOT_SETTINGS.botName = name;
+                    saveBotSettings();
+                    await reply(`✅ Bot name changed to: ${name}`);
                     break;
                 }
                 
                 case 'setreply': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change auto reply!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change auto reply!');
                     const state = args[0];
                     if (!['on', 'off'].includes(state)) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Invalid state! Use: on or off' 
-                        });
+                        return await reply('❌ Invalid state! Use: on or off');
                     }
-                    
                     config.BOT_SETTINGS.autoReply = state;
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Auto reply ${state === 'on' ? 'enabled' : 'disabled'}` 
-                    });
+                    await reply(`✅ Auto reply ${state === 'on' ? 'enabled' : 'disabled'}`);
                     break;
                 }
                 
                 case 'setautoread': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change auto read!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change auto read!');
                     const state = args[0];
                     if (!['on', 'off'].includes(state)) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Invalid state! Use: on or off' 
-                        });
+                        return await reply('❌ Invalid state! Use: on or off');
                     }
-                    
                     config.BOT_SETTINGS.autoRead = state;
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Auto read ${state === 'on' ? 'enabled' : 'disabled'}` 
-                    });
+                    await reply(`✅ Auto read ${state === 'on' ? 'enabled' : 'disabled'}`);
                     break;
                 }
                 
                 case 'settyping': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change typing indicator!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change typing indicator!');
                     const state = args[0];
                     if (!['on', 'off'].includes(state)) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Invalid state! Use: on or off' 
-                        });
+                        return await reply('❌ Invalid state! Use: on or off');
                     }
-                    
                     config.BOT_SETTINGS.typingIndicator = state;
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Typing indicator ${state === 'on' ? 'enabled' : 'disabled'}` 
-                    });
+                    await reply(`✅ Typing indicator ${state === 'on' ? 'enabled' : 'disabled'}`);
                     break;
                 }
                 
                 case 'setreact': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change auto reaction!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change auto reaction!');
                     const state = args[0];
                     if (!['on', 'off'].includes(state)) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Invalid state! Use: on or off' 
-                        });
+                        return await reply('❌ Invalid state! Use: on or off');
                     }
-                    
                     config.BOT_SETTINGS.autoReact = state;
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Auto reaction ${state === 'on' ? 'enabled' : 'disabled'}` 
-                    });
+                    await reply(`✅ Auto reaction ${state === 'on' ? 'enabled' : 'disabled'}`);
                     break;
                 }
                 
                 case 'setstatus': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change bot status!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change bot status!');
                     const statusText = args.join(' ');
                     if (!statusText) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Please provide status text!\nExample: .setstatus DXLK Bot is online' 
-                        });
+                        return await reply('❌ Please provide status text!\nExample: .setstatus DXLK Bot is online');
                     }
-                    
                     config.BOT_SETTINGS.status = statusText;
                     saveBotSettings();
-                    
-                    // Update bot's WhatsApp status
                     try {
                         await socket.updateProfileStatus(statusText);
                     } catch (error) {
                         console.log('Failed to update WhatsApp status:', error);
                     }
-                    
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Bot status updated to: ${statusText}` 
-                    });
+                    await reply(`✅ Bot status updated to: ${statusText}`);
                     break;
                 }
                 
                 case 'setbio': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change bot bio!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change bot bio!');
                     const bioText = args.join(' ');
                     if (!bioText) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Please provide bio text!\nExample: .setbio Powered by DXLK Mini Bot' 
-                        });
+                        return await reply('❌ Please provide bio text!\nExample: .setbio Powered by DXLK Mini Bot');
                     }
-                    
                     config.BOT_SETTINGS.bio = bioText;
                     saveBotSettings();
-                    
-                    // Update bot's WhatsApp bio
                     try {
                         await socket.updateProfile(bioText);
                     } catch (error) {
                         console.log('Failed to update WhatsApp bio:', error);
                     }
-                    
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Bot bio updated to: ${bioText}` 
-                    });
+                    await reply(`✅ Bot bio updated to: ${bioText}`);
                     break;
                 }
                 
                 case 'setantispam': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change anti-spam!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change anti-spam!');
                     const state = args[0];
                     if (!['on', 'off'].includes(state)) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Invalid state! Use: on or off' 
-                        });
+                        return await reply('❌ Invalid state! Use: on or off');
                     }
-                    
                     config.BOT_SETTINGS.antiSpam = state;
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Anti-spam protection ${state === 'on' ? 'enabled' : 'disabled'}` 
-                    });
+                    await reply(`✅ Anti-spam protection ${state === 'on' ? 'enabled' : 'disabled'}`);
                     break;
                 }
                 
                 case 'setantilink': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change anti-link!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change anti-link!');
                     const state = args[0];
                     if (!['on', 'off'].includes(state)) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Invalid state! Use: on or off' 
-                        });
+                        return await reply('❌ Invalid state! Use: on or off');
                     }
-                    
                     config.BOT_SETTINGS.antiLink = state;
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Anti-link protection ${state === 'on' ? 'enabled' : 'disabled'}` 
-                    });
+                    await reply(`✅ Anti-link protection ${state === 'on' ? 'enabled' : 'disabled'}`);
+                    break;
+                }
+                
+                case 'setgroupwelcome': {
+                    if (!isOwner) return await reply('❌ Only bot owner can change group welcome!');
+                    const state = args[0];
+                    if (!['on', 'off'].includes(state)) {
+                        return await reply('❌ Invalid state! Use: on or off');
+                    }
+                    config.BOT_SETTINGS.groupWelcome = state;
+                    saveBotSettings();
+                    await reply(`✅ Group welcome ${state === 'on' ? 'enabled' : 'disabled'}`);
+                    break;
+                }
+                
+                case 'setgroupgoodbye': {
+                    if (!isOwner) return await reply('❌ Only bot owner can change group goodbye!');
+                    const state = args[0];
+                    if (!['on', 'off'].includes(state)) {
+                        return await reply('❌ Invalid state! Use: on or off');
+                    }
+                    config.BOT_SETTINGS.groupGoodbye = state;
+                    saveBotSettings();
+                    await reply(`✅ Group goodbye ${state === 'on' ? 'enabled' : 'disabled'}`);
                     break;
                 }
                 
                 case 'setownername': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change owner name!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change owner name!');
                     const name = args.join(' ');
-                    if (!name) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Please provide owner name!' 
-                        });
-                    }
-                    
+                    if (!name) return await reply('❌ Please provide owner name!');
                     config.BOT_SETTINGS.ownerName = name;
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Owner name updated to: ${name}` 
-                    });
+                    await reply(`✅ Owner name updated to: ${name}`);
                     break;
                 }
                 
                 case 'setownernumber': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change owner number!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can change owner number!');
                     const numberInput = args[0];
                     if (!numberInput || !/^\d+$/.test(numberInput)) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Please provide a valid phone number!' 
-                        });
+                        return await reply('❌ Please provide a valid phone number!');
                     }
-                    
                     config.BOT_SETTINGS.ownerNumber = numberInput;
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Owner number updated to: ${numberInput}` 
-                    });
+                    await reply(`✅ Owner number updated to: ${numberInput}`);
                     break;
                 }
                 
                 case 'setblockcmd': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can block commands!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can block commands!');
                     const cmd = args[0];
-                    if (!cmd) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Please provide command name!\nExample: .setblockcmd tiktok' 
-                        });
-                    }
-                    
+                    if (!cmd) return await reply('❌ Please provide command name!\nExample: .setblockcmd tiktok');
                     if (!config.DISABLED_COMMANDS.includes(cmd)) {
                         config.DISABLED_COMMANDS.push(cmd);
-                        await socket.sendMessage(sender, { 
-                            text: `✅ Command "${cmd}" has been disabled` 
-                        });
+                        await reply(`✅ Command "${cmd}" has been disabled`);
                     } else {
-                        await socket.sendMessage(sender, { 
-                            text: `ℹ️ Command "${cmd}" is already disabled` 
-                        });
+                        await reply(`ℹ️ Command "${cmd}" is already disabled`);
                     }
                     break;
                 }
                 
                 case 'setenablecmd': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can enable commands!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can enable commands!');
                     const cmd = args[0];
-                    if (!cmd) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Please provide command name!\nExample: .setenablecmd tiktok' 
-                        });
-                    }
-                    
+                    if (!cmd) return await reply('❌ Please provide command name!\nExample: .setenablecmd tiktok');
                     const index = config.DISABLED_COMMANDS.indexOf(cmd);
                     if (index > -1) {
                         config.DISABLED_COMMANDS.splice(index, 1);
-                        await socket.sendMessage(sender, { 
-                            text: `✅ Command "${cmd}" has been enabled` 
-                        });
+                        await reply(`✅ Command "${cmd}" has been enabled`);
                     } else {
-                        await socket.sendMessage(sender, { 
-                            text: `ℹ️ Command "${cmd}" is not disabled` 
-                        });
+                        await reply(`ℹ️ Command "${cmd}" is not disabled`);
                     }
                     break;
                 }
                 
-                case 'resetsettings': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can reset settings!' });
+                case 'setmaintenance': {
+                    if (!isOwner) return await reply('❌ Only bot owner can change maintenance mode!');
+                    const state = args[0];
+                    if (!['on', 'off'].includes(state)) {
+                        return await reply('❌ Invalid state! Use: on or off');
                     }
-                    
+                    config.BOT_SETTINGS.maintenance = state;
+                    saveBotSettings();
+                    await reply(`✅ Maintenance mode ${state === 'on' ? 'enabled' : 'disabled'}`);
+                    break;
+                }
+                
+                case 'resetsettings': {
+                    if (!isOwner) return await reply('❌ Only bot owner can reset settings!');
                     config.BOT_SETTINGS = {
                         prefix: '.',
                         language: 'en',
@@ -1083,90 +1057,642 @@ function setupCommandHandlers(socket, number) {
                         autoSave: 'on',
                         userLimit: 50,
                         cooldown: 3,
-                        maintenance: 'off'
+                        maintenance: 'off',
+                        groupWelcome: 'on',
+                        groupGoodbye: 'on',
+                        botName: 'DXLK Mini Bot'
                     };
                     config.DISABLED_COMMANDS = [];
-                    
                     saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: '✅ All settings have been reset to default' 
-                    });
+                    await reply('✅ All settings have been reset to default');
                     break;
                 }
                 
                 case 'backup': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can backup settings!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can backup settings!');
                     const backupData = {
                         settings: config.BOT_SETTINGS,
                         disabledCommands: config.DISABLED_COMMANDS,
                         timestamp: new Date().toISOString()
                     };
-                    
                     const backupPath = `./backup_settings_${Date.now()}.json`;
                     fs.writeFileSync(backupPath, JSON.stringify(backupData, null, 2));
-                    
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Settings backed up to: ${backupPath}` 
-                    });
+                    await reply(`✅ Settings backed up to: ${backupPath}`);
                     break;
                 }
                 
                 case 'restore': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can restore settings!' });
-                    }
-                    
+                    if (!isOwner) return await reply('❌ Only bot owner can restore settings!');
                     if (msg.message?.imageMessage || msg.message?.documentMessage) {
                         try {
                             const media = msg.message.imageMessage || msg.message.documentMessage;
                             const filePath = await socket.downloadAndSaveMediaMessage(media);
                             const backupData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                            
                             config.BOT_SETTINGS = backupData.settings;
                             config.DISABLED_COMMANDS = backupData.disabledCommands;
                             saveBotSettings();
-                            
                             fs.unlinkSync(filePath);
-                            await socket.sendMessage(sender, { 
-                                text: '✅ Settings restored from backup' 
-                            });
+                            await reply('✅ Settings restored from backup');
                         } catch (error) {
-                            await socket.sendMessage(sender, { 
-                                text: '❌ Failed to restore backup. Invalid backup file.' 
-                            });
+                            await reply('❌ Failed to restore backup. Invalid backup file.');
                         }
                     } else {
-                        await socket.sendMessage(sender, { 
-                            text: '❌ Please send the backup JSON file' 
-                        });
+                        await reply('❌ Please send the backup JSON file');
                     }
                     break;
                 }
                 
-                case 'setmaintenance': {
-                    if (!isOwner) {
-                        return await socket.sendMessage(sender, { text: '❌ Only bot owner can change maintenance mode!' });
+                // ========== GROUP COMMANDS ==========
+                case 'group': {
+                    if (!isGroup) return await reply('❌ This command only works in groups!');
+                    if (!isOwner && !(await isGroupAdmin(socket, from, sender))) {
+                        return await reply('❌ Only group admins can use this command!');
                     }
                     
-                    const state = args[0];
-                    if (!['on', 'off'].includes(state)) {
-                        return await socket.sendMessage(sender, { 
-                            text: '❌ Invalid state! Use: on or off' 
-                        });
-                    }
-                    
-                    config.BOT_SETTINGS.maintenance = state;
-                    saveBotSettings();
-                    await socket.sendMessage(sender, { 
-                        text: `✅ Maintenance mode ${state === 'on' ? 'enabled' : 'disabled'}` 
-                    });
+                    const sections = [
+                        {
+                            title: '👥 GROUP MANAGEMENT',
+                            rows: [
+                                { title: 'Group Info', description: 'Get group information', id: `${prefix}groupinfo` },
+                                { title: 'Group Settings', description: 'Group settings menu', id: `${prefix}groupsettings` },
+                                { title: 'Add User', description: 'Add user to group', id: `${prefix}add` },
+                                { title: 'Remove User', description: 'Remove user from group', id: `${prefix}remove` }
+                            ]
+                        },
+                        {
+                            title: '🛡️ GROUP PROTECTION',
+                            rows: [
+                                { title: 'Anti Link', description: 'Enable/disable anti-link', id: `${prefix}groupantilink` },
+                                { title: 'Anti Spam', description: 'Enable/disable anti-spam', id: `${prefix}groupantispam` },
+                                { title: 'Welcome Message', description: 'Set welcome message', id: `${prefix}setwelcome` },
+                                { title: 'Goodbye Message', description: 'Set goodbye message', id: `${prefix}setgoodbye` }
+                            ]
+                        },
+                        {
+                            title: '⚙️ GROUP UTILITIES',
+                            rows: [
+                                { title: 'Tag All', description: 'Tag all group members', id: `${prefix}tagall` },
+                                { title: 'Group Link', description: 'Get group invite link', id: `${prefix}invite` },
+                                { title: 'Promote User', description: 'Make user admin', id: `${prefix}promote` },
+                                { title: 'Demote User', description: 'Remove admin', id: `${prefix}demote` }
+                            ]
+                        }
+                    ];
+
+                    const buttonMessage = {
+                        buttons: [
+                            {
+                                buttonId: 'action',
+                                buttonText: { displayText: '👥 Group Menu' },
+                                type: 4,
+                                nativeFlowInfo: {
+                                    name: 'single_select',
+                                    paramsJson: JSON.stringify({
+                                        title: 'Group Management 👥',
+                                        sections: sections
+                                    })
+                                }
+                            }
+                        ],
+                        headerType: 1,
+                        viewOnce: true,
+                        caption: '👥 *Group Management Menu*\nSelect an option:',
+                        image: { url: 'https://i.ibb.co/XfWS0SF3/89be83969ccefc24.jpg' }
+                    };
+
+                    await socket.sendMessage(from, buttonMessage, { quoted: msg });
                     break;
                 }
                 
-                // Existing commands continue here...
+                case 'groupinfo': {
+                    if (!isGroup) return await reply('❌ This command only works in groups!');
+                    
+                    try {
+                        const metadata = await socket.groupMetadata(from);
+                        const participants = metadata.participants;
+                        const admins = participants.filter(p => p.admin).map(p => p.id.split('@')[0]);
+                        const owner = participants.find(p => p.admin === 'superadmin')?.id.split('@')[0] || 'Unknown';
+                        
+                        const infoText = `
+*🏷️ Group Name:* ${metadata.subject}
+*🆔 Group ID:* ${metadata.id}
+*👥 Total Members:* ${participants.length}
+*👑 Owner:* ${owner}
+*🛡️ Admins:* ${admins.length}
+*📅 Created:* ${moment(metadata.creation * 1000).format('YYYY-MM-DD HH:mm:ss')}
+*📝 Description:* ${metadata.desc || 'No description'}
+
+*Group Settings:*
+• Anti Link: ${config.BOT_SETTINGS.antiLink === 'on' ? '✅' : '❌'}
+• Anti Spam: ${config.BOT_SETTINGS.antiSpam === 'on' ? '✅' : '❌'}
+• Welcome: ${config.BOT_SETTINGS.groupWelcome === 'on' ? '✅' : '❌'}
+• Goodbye: ${config.BOT_SETTINGS.groupGoodbye === 'on' ? '✅' : '❌'}
+                        `;
+                        
+                        await socket.sendMessage(from, {
+                            text: infoText,
+                            contextInfo: {
+                                mentionedJid: admins.map(admin => `${admin}@s.whatsapp.net`)
+                            }
+                        }, { quoted: msg });
+                    } catch (error) {
+                        await reply('❌ Failed to get group information');
+                    }
+                    break;
+                }
+                
+                case 'tagall': {
+                    if (!isGroup) return await reply('❌ This command only works in groups!');
+                    if (!isOwner && !(await isGroupAdmin(socket, from, sender))) {
+                        return await reply('❌ Only group admins can use this command!');
+                    }
+                    
+                    try {
+                        const metadata = await socket.groupMetadata(from);
+                        const participants = metadata.participants;
+                        const mentions = participants.map(p => p.id);
+                        const text = args.join(' ') || '📢 Attention everyone!';
+                        
+                        await socket.sendMessage(from, {
+                            text: `${text}\n\n${participants.map((p, i) => `@${i + 1}`).join(' ')}`,
+                            mentions: mentions
+                        }, { quoted: msg });
+                    } catch (error) {
+                        await reply('❌ Failed to tag all members');
+                    }
+                    break;
+                }
+                
+                case 'add': {
+                    if (!isGroup) return await reply('❌ This command only works in groups!');
+                    if (!isOwner && !(await isGroupAdmin(socket, from, sender))) {
+                        return await reply('❌ Only group admins can use this command!');
+                    }
+                    
+                    const numbers = args.map(num => num.replace(/[^0-9]/g, '')).filter(num => num.length >= 10);
+                    if (numbers.length === 0) {
+                        return await reply('❌ Please provide phone numbers to add!\nExample: .add 94701234567 94711234567');
+                    }
+                    
+                    try {
+                        const jids = numbers.map(num => `${num}@s.whatsapp.net`);
+                        await socket.groupParticipantsUpdate(from, jids, 'add');
+                        await reply(`✅ Added ${numbers.length} user(s) to the group`);
+                    } catch (error) {
+                        await reply('❌ Failed to add users to group');
+                    }
+                    break;
+                }
+                
+                case 'remove': {
+                    if (!isGroup) return await reply('❌ This command only works in groups!');
+                    if (!isOwner && !(await isGroupAdmin(socket, from, sender))) {
+                        return await reply('❌ Only group admins can use this command!');
+                    }
+                    
+                    const target = args[0] || msg.message?.extendedTextMessage?.contextInfo?.participant?.split('@')[0];
+                    if (!target) {
+                        return await reply('❌ Please provide a user to remove!\nExample: .remove @user or .remove 94701234567');
+                    }
+                    
+                    try {
+                        const targetJid = target.includes('@') ? target : `${target}@s.whatsapp.net`;
+                        await socket.groupParticipantsUpdate(from, [targetJid], 'remove');
+                        await reply(`✅ Removed user from group`);
+                    } catch (error) {
+                        await reply('❌ Failed to remove user from group');
+                    }
+                    break;
+                }
+                
+                case 'promote': {
+                    if (!isGroup) return await reply('❌ This command only works in groups!');
+                    if (!isOwner && !(await isGroupAdmin(socket, from, sender))) {
+                        return await reply('❌ Only group admins can use this command!');
+                    }
+                    
+                    const target = args[0] || msg.message?.extendedTextMessage?.contextInfo?.participant?.split('@')[0];
+                    if (!target) {
+                        return await reply('❌ Please provide a user to promote!\nExample: .promote @user or .promote 94701234567');
+                    }
+                    
+                    try {
+                        const targetJid = target.includes('@') ? target : `${target}@s.whatsapp.net`;
+                        await socket.groupParticipantsUpdate(from, [targetJid], 'promote');
+                        await reply(`✅ Promoted user to admin`);
+                    } catch (error) {
+                        await reply('❌ Failed to promote user');
+                    }
+                    break;
+                }
+                
+                case 'demote': {
+                    if (!isGroup) return await reply('❌ This command only works in groups!');
+                    if (!isOwner && !(await isGroupAdmin(socket, from, sender))) {
+                        return await reply('❌ Only group admins can use this command!');
+                    }
+                    
+                    const target = args[0] || msg.message?.extendedTextMessage?.contextInfo?.participant?.split('@')[0];
+                    if (!target) {
+                        return await reply('❌ Please provide a user to demote!\nExample: .demote @user or .demote 94701234567');
+                    }
+                    
+                    try {
+                        const targetJid = target.includes('@') ? target : `${target}@s.whatsapp.net`;
+                        await socket.groupParticipantsUpdate(from, [targetJid], 'demote');
+                        await reply(`✅ Demoted user from admin`);
+                    } catch (error) {
+                        await reply('❌ Failed to demote user');
+                    }
+                    break;
+                }
+                
+                case 'invite': {
+                    if (!isGroup) return await reply('❌ This command only works in groups!');
+                    
+                    try {
+                        const code = await socket.groupInviteCode(from);
+                        const inviteLink = `https://chat.whatsapp.com/${code}`;
+                        await reply(`🔗 Group Invite Link:\n${inviteLink}`);
+                    } catch (error) {
+                        await reply('❌ Failed to get group invite link');
+                    }
+                    break;
+                }
+                
+                // ========== OWNER COMMANDS ==========
+                case 'owner': {
+                    const ownerInfo = `
+*👑 BOT OWNER INFORMATION*
+
+*Name:* ${config.BOT_SETTINGS.ownerName}
+*Number:* ${config.BOT_SETTINGS.ownerNumber}
+*Bot Name:* ${config.BOT_SETTINGS.botName}
+*Version:* DXLK Mini Bot v2.0
+
+*📞 Contact Owners:*
+• lakshan: 94789227570
+• dineth: 9472 664 5160
+• GOD SHAVIYA: 94707085822
+
+*🌐 WhatsApp Channel:*
+https://whatsapp.com/channel/0029VbC1S2nEquiQQ5TA1u31
+
+*👥 WhatsApp Group:*
+https://chat.whatsapp.com/HSVSgUDY1SwBccoreYKjJ5
+
+*Powered by DXLK Mini Bot Team*
+                    `;
+                    
+                    await socket.sendMessage(sender, {
+                        image: { url: config.RCD_IMAGE_PATH },
+                        caption: ownerInfo
+                    }, { quoted: msg });
+                    break;
+                }
+                
+                case 'eval': {
+                    if (!isOwner) return await reply('❌ Only bot owner can use this command!');
+                    
+                    const code = args.join(' ');
+                    if (!code) return await reply('❌ Please provide code to evaluate!');
+                    
+                    try {
+                        let result = eval(code);
+                        if (typeof result !== 'string') {
+                            result = require('util').inspect(result, { depth: 1 });
+                        }
+                        await reply(`✅ Evaluation Result:\n\`\`\`${result}\`\`\``);
+                    } catch (error) {
+                        await reply(`❌ Evaluation Error:\n\`\`\`${error.message}\`\`\``);
+                    }
+                    break;
+                }
+                
+                case 'broadcast': {
+                    if (!isOwner) return await reply('❌ Only bot owner can use this command!');
+                    
+                    const message = args.join(' ');
+                    if (!message) return await reply('❌ Please provide message to broadcast!');
+                    
+                    try {
+                        const numbers = JSON.parse(fs.readFileSync(NUMBER_LIST_PATH, 'utf8'));
+                        let success = 0;
+                        let failed = 0;
+                        
+                        for (const num of numbers) {
+                            try {
+                                await socket.sendMessage(`${num}@s.whatsapp.net`, {
+                                    text: `📢 *BROADCAST MESSAGE*\n\n${message}\n\n- ${config.BOT_SETTINGS.ownerName}`
+                                });
+                                success++;
+                                await delay(1000);
+                            } catch (error) {
+                                failed++;
+                            }
+                        }
+                        
+                        await reply(`✅ Broadcast completed!\n✓ Success: ${success}\n✗ Failed: ${failed}`);
+                    } catch (error) {
+                        await reply('❌ Failed to send broadcast');
+                    }
+                    break;
+                }
+                
+                case 'restart': {
+                    if (!isOwner) return await reply('❌ Only bot owner can restart bot!');
+                    
+                    await reply('🔄 Restarting bot...');
+                    exec(`pm2 restart ${process.env.PM2_NAME || 'SULA-MINI-main'}`);
+                    break;
+                }
+                
+                // ========== SPAM/UTILITY COMMANDS ==========
+                case 'spam': {
+                    if (!isOwner) return await reply('❌ Only bot owner can use spam commands!');
+                    
+                    const subcmd = args[0];
+                    
+                    switch (subcmd) {
+                        case 'list':
+                            const spamList = Array.from(spamUsers.keys()).map(key => {
+                                const data = spamUsers.get(key);
+                                return `• ${key}: ${data.count} messages`;
+                            }).join('\n');
+                            await reply(`📊 Spam Users List:\n${spamList || 'No spam users detected'}`);
+                            break;
+                            
+                        case 'clear':
+                            spamUsers.clear();
+                            await reply('✅ Cleared all spam data');
+                            break;
+                            
+                        case 'add':
+                            const userToAdd = args[1];
+                            if (!userToAdd) return await reply('❌ Please provide user number!');
+                            addSpamUser(userToAdd);
+                            await reply(`✅ Added ${userToAdd} to spam list`);
+                            break;
+                            
+                        case 'remove':
+                            const userToRemove = args[1];
+                            if (!userToRemove) return await reply('❌ Please provide user number!');
+                            removeSpamUser(userToRemove);
+                            await reply(`✅ Removed ${userToRemove} from spam list`);
+                            break;
+                            
+                        default:
+                            await reply(`📋 Spam Commands:\n• ${prefix}spam list - Show spam users\n• ${prefix}spam clear - Clear spam data\n• ${prefix}spam add <number> - Add user to spam list\n• ${prefix}spam remove <number> - Remove user from spam list`);
+                            break;
+                    }
+                    break;
+                }
+                
+                case 'bomb': {
+                    const count = parseInt(args[0]) || 10;
+                    if (count > 50) return await reply('❌ Maximum 50 messages allowed!');
+                    
+                    await reply(`💣 Starting message bomb (${count} messages)...`);
+                    
+                    for (let i = 1; i <= count; i++) {
+                        await socket.sendMessage(sender, { text: `💣 BOMB ${i}/${count}` });
+                        await delay(500);
+                    }
+                    
+                    await socket.sendMessage(sender, { text: '✅ Bombing completed!' });
+                    break;
+                }
+                
+                // ========== MEDIA & INFO COMMANDS ==========
+                case 'getdp': {
+                    try {
+                        let targetNumber;
+                        
+                        // Check if replying to a message
+                        if (msg.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
+                            targetNumber = msg.message.extendedTextMessage.contextInfo.participant.split('@')[0];
+                        } 
+                        // Check if number provided as argument
+                        else if (args[0]) {
+                            targetNumber = args[0].replace(/[^0-9]/g, '');
+                        }
+                        // Use sender's number if no target specified
+                        else {
+                            targetNumber = senderNumber;
+                        }
+                        
+                        if (!targetNumber || targetNumber.length < 10) {
+                            return await reply('❌ Invalid phone number!\nUsage: .getdp <number> or reply to a message');
+                        }
+                        
+                        const jid = `${targetNumber}@s.whatsapp.net`;
+                        
+                        try {
+                            const profilePicUrl = await socket.profilePictureUrl(jid, 'image');
+                            
+                            await socket.sendMessage(sender, { 
+                                image: { url: profilePicUrl }, 
+                                caption: `🖼️ Profile Picture of @${targetNumber}`,
+                                mentions: [jid]
+                            }, { quoted: msg });
+                            
+                        } catch (err) {
+                            // If no profile picture or privacy settings
+                            await reply(`⚠️ No profile picture found for ${targetNumber} or privacy settings prevent access.`);
+                        }
+                        
+                    } catch (e) {
+                        console.error('getdp error:', e);
+                        await reply(`❌ Error: ${e.message || 'Failed to get profile picture'}`);
+                    }
+                    break;
+                }
+                
+                case 'vv':
+                case 'viewonce': {
+                    try {
+                        // Check if replying to a view once message
+                        const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+                        
+                        if (!quotedMsg) {
+                            return await reply('❌ Please reply to a view once message!');
+                        }
+                        
+                        // Detect view once content
+                        const viewOnceContent = quotedMsg.viewOnceMessageV2 || quotedMsg.viewOnceMessage || quotedMsg;
+                        let mediaMessage = null;
+                        let mediaType = '';
+                        
+                        if (viewOnceContent?.message?.imageMessage) {
+                            mediaMessage = viewOnceContent.message.imageMessage;
+                            mediaType = 'image';
+                        } else if (viewOnceContent?.message?.videoMessage) {
+                            mediaMessage = viewOnceContent.message.videoMessage;
+                            mediaType = 'video';
+                        } else if (viewOnceContent?.imageMessage) {
+                            mediaMessage = viewOnceContent.imageMessage;
+                            mediaType = 'image';
+                        } else if (viewOnceContent?.videoMessage) {
+                            mediaMessage = viewOnceContent.videoMessage;
+                            mediaType = 'video';
+                        }
+                        
+                        if (!mediaMessage) {
+                            return await reply('❌ No view once media found in the replied message!');
+                        }
+                        
+                        await socket.sendMessage(sender, { react: { text: '⏳', key: msg.key } });
+                        
+                        // Download the media
+                        const stream = await downloadContentFromMessage(mediaMessage, mediaType);
+                        let buffer = Buffer.from([]);
+                        for await (const chunk of stream) {
+                            buffer = Buffer.concat([buffer, chunk]);
+                        }
+                        
+                        // Send the media back
+                        if (mediaType === 'image') {
+                            await socket.sendMessage(sender, {
+                                image: buffer,
+                                caption: '✅ View Once Image Retrieved',
+                                mimetype: mediaMessage.mimetype
+                            }, { quoted: msg });
+                        } else if (mediaType === 'video') {
+                            await socket.sendMessage(sender, {
+                                video: buffer,
+                                caption: '✅ View Once Video Retrieved',
+                                mimetype: mediaMessage.mimetype
+                            }, { quoted: msg });
+                        }
+                        
+                        await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } });
+                        
+                    } catch (e) {
+                        console.error('ViewOnce error:', e);
+                        await reply(`❌ Error: ${e.message || 'Failed to retrieve view once media'}`);
+                    }
+                    break;
+                }
+                
+                case 'getbio': {
+                    try {
+                        const targetNumber = args[0]?.replace(/[^0-9]/g, '') || senderNumber;
+                        
+                        if (!targetNumber || targetNumber.length < 10) {
+                            return await reply('❌ Invalid phone number!\nUsage: .getbio <number>');
+                        }
+                        
+                        const jid = `${targetNumber}@s.whatsapp.net`;
+                        const statusData = await socket.fetchStatus(jid).catch(() => null);
+                        
+                        if (statusData?.status) {
+                            await reply(`📝 Bio of ${targetNumber}:\n${statusData.status}`);
+                        } else {
+                            await reply(`ℹ️ No bio found for ${targetNumber}`);
+                        }
+                        
+                    } catch (e) {
+                        await reply(`❌ Error: ${e.message || 'Failed to get bio'}`);
+                    }
+                    break;
+                }
+                
+                case 'getstatus': {
+                    try {
+                        const targetNumber = args[0]?.replace(/[^0-9]/g, '') || senderNumber;
+                        
+                        if (!targetNumber || targetNumber.length < 10) {
+                            return await reply('❌ Invalid phone number!\nUsage: .getstatus <number>');
+                        }
+                        
+                        const jid = `${targetNumber}@s.whatsapp.net`;
+                        const statusData = await socket.fetchStatus(jid).catch(() => null);
+                        
+                        if (statusData?.status) {
+                            const setAt = statusData.setAt ? 
+                                moment(statusData.setAt).tz('Asia/Colombo').format('YYYY-MM-DD HH:mm:ss') : 
+                                'Unknown';
+                            
+                            await reply(`📡 Status of ${targetNumber}:\n\n${statusData.status}\n\n📅 Last Updated: ${setAt}`);
+                        } else {
+                            await reply(`ℹ️ No status found for ${targetNumber}`);
+                        }
+                        
+                    } catch (e) {
+                        await reply(`❌ Error: ${e.message || 'Failed to get status'}`);
+                    }
+                    break;
+                }
+                
+                case 'userinfo': {
+                    try {
+                        const targetNumber = args[0]?.replace(/[^0-9]/g, '') || senderNumber;
+                        
+                        if (!targetNumber || targetNumber.length < 10) {
+                            return await reply('❌ Invalid phone number!\nUsage: .userinfo <number>');
+                        }
+                        
+                        const jid = `${targetNumber}@s.whatsapp.net`;
+                        const [user] = await socket.onWhatsApp(jid).catch(() => []);
+                        
+                        if (!user?.exists) {
+                            return await reply('❌ User not found on WhatsApp');
+                        }
+                        
+                        // Get profile picture
+                        let profilePicUrl = config.RCD_IMAGE_PATH;
+                        try {
+                            profilePicUrl = await socket.profilePictureUrl(jid, 'image');
+                        } catch {}
+                        
+                        // Get status/bio
+                        let bio = 'No bio available';
+                        let lastSeen = 'Not available';
+                        
+                        try {
+                            const statusData = await socket.fetchStatus(jid);
+                            if (statusData?.status) {
+                                bio = statusData.status;
+                            }
+                        } catch {}
+                        
+                        try {
+                            const presenceData = await socket.fetchPresence(jid);
+                            if (presenceData?.lastSeen) {
+                                lastSeen = moment(presenceData.lastSeen).tz('Asia/Colombo').format('YYYY-MM-DD HH:mm:ss');
+                            }
+                        } catch {}
+                        
+                        const infoText = `
+*👤 USER INFORMATION*
+
+*📞 Number:* ${targetNumber}
+*👤 Name:* ${user.name || 'Not available'}
+*🏢 Account Type:* ${user.isBusiness ? 'Business Account 💼' : 'Personal Account 👤'}
+*✅ WhatsApp Verified:* ${user.verifiedName ? 'Yes ✅' : 'No ❌'}
+
+*📝 Bio:*
+${bio}
+
+*🕒 Last Seen:* ${lastSeen}
+*📱 Platform:* ${user.platform || 'Unknown'}
+
+*🔗 Profile Link:* https://wa.me/${targetNumber}
+                        `;
+                        
+                        await socket.sendMessage(sender, {
+                            image: { url: profilePicUrl },
+                            caption: infoText
+                        }, { quoted: msg });
+                        
+                    } catch (e) {
+                        console.error('userinfo error:', e);
+                        await reply(`❌ Error: ${e.message || 'Failed to get user info'}`);
+                    }
+                    break;
+                }
+                
+                // ========== EXISTING COMMANDS ==========
                 case 'button': {
                     const buttons = [
                         {
@@ -1181,8 +1707,8 @@ function setupCommandHandlers(socket, number) {
                         }
                     ];
 
-                    const captionText = '𝐏𝙾𝚆𝙴𝚁𝙳 𝐁𝚈 lakshan MD';
-                    const footerText = 'lakshan_ 𝐌𝙳 𝐅𝚁𝙴𝙴 𝐁𝙾𝚃';
+                    const captionText = '𝐏𝙾𝚆𝙴𝚁𝙳 𝐁𝚈 DXLK Mini Bot';
+                    const footerText = 'DXLK Mini Bot';
 
                     const buttonMessage = {
                         image: { url: "https://i.ibb.co/XfWS0SF3/89be83969ccefc24.jpg" },
@@ -1192,14 +1718,9 @@ function setupCommandHandlers(socket, number) {
                         headerType: 1
                     };
 
-                    socket.sendMessage(from, buttonMessage, { quoted: msg });
-
+                    await socket.sendMessage(from, buttonMessage, { quoted: msg });
                     break;
                 }
-                
-                // ... [rest of existing commands remain the same as original]
-                // Note: Due to character limit, I'm showing the structure
-                // The complete original commands should be inserted here
                 
                 case 'alive': {
                     const startTime = socketCreationTime.get(number) || Date.now();
@@ -1209,122 +1730,862 @@ function setupCommandHandlers(socket, number) {
                     const seconds = Math.floor(uptime % 60);
 
                     const captionText = `
-╭────◉◉◉────៚\n⏰ Bot Uptime: ${hours}h ${minutes}m ${seconds}s\n🟢 Active session: ${activeSockets.size}\n╰────◉◉◉────៚\n\n🔢 Your Number: ${number}\n\n*▫️DXLK Mini Bot whatsapp channel 🌐*\n>https://whatsapp.com/channel/0029VbC1S2nEquiQQ5TA1u31
-`;
+╭────◉◉◉────៚
+⏰ Bot Uptime: ${hours}h ${minutes}m ${seconds}s
+🟢 Active session: ${activeSockets.size}
+╰────◉◉◉────៚
 
-                    await socket.sendMessage(m.chat, {
-                        buttons: [
-                            {
-                                buttonId: 'action',
-                                buttonText: {
-                                    displayText: '📂 Menu Options'
-                                },
-                                type: 4,
-                                nativeFlowInfo: {
-                                    name: 'single_select',
-                                    paramsJson: JSON.stringify({
-                                        title: 'Click Here ❏',
-                                        sections: [
-                                            {
-                                                title: `DXLK Mini Bot`,
-                                                highlight_label: '',
-                                                rows: [
-                                                    {
-                                                        title: 'MENU 📌',
-                                                        description: '𝐏𝙾𝚆𝙴𝚁𝙳 𝐁𝚈 DXLK Mini Bot',
-                                                        id: `${prefix}menu`,
-                                                    },
-                                                    {
-                                                        title: 'ALIVE 📌',
-                                                        description: '𝐏𝙾𝚆𝙴𝚁𝙳 𝐁𝚈 DXLK Mini Bot',
-                                                        id: `${prefix}alive`,
-                                                    },
-                                                ],
-                                            },
-                                        ],
-                                    }),
-                                },
-                            },
-                        ],
-                        headerType: 1,
-                        viewOnce: true,
+🔢 Your Number: ${number}
+
+*▫️DXLK Mini Bot whatsapp channel 🌐*
+> https://whatsapp.com/channel/0029VbC1S2nEquiQQ5TA1u31
+
+👑 Owners:
+• lakshan: 94789227570
+• dineth: 9472 664 5160
+• GOD SHAVIYA: 94707085822
+                    `;
+
+                    await socket.sendMessage(sender, {
                         image: { url: "https://i.ibb.co/XfWS0SF3/89be83969ccefc24.jpg" },
-                        caption: `DXLK Mini Bot𝐀𝙻𝙸𝚅𝙴 𝐍𝙾𝚆\n\n${captionText}`,
+                        caption: `*🤖 DXLK Mini Bot is ALIVE!*\n\n${captionText}`
                     }, { quoted: msg });
                     break;
                 }
                 
                 case 'menu': {
-                    await socket.sendMessage(from, {
-                        image: { url: config.RCD_IMAGE_PATH },
-                        caption: formatMessage(
-                            'DXLK Mini Bot 𝐌𝙴𝙽𝚄',
-                            `╔══════════════════════════╗
-        ✨🌐 DXLK Mini Bot - Commands 🌐✨
+                    const menuText = `
+╔══════════════════════════╗
+     ✨🌐 DXLK Mini Bot 🌐✨
 ╚══════════════════════════╝
 
-┏━━━💻 Bot Status ━━━┓
-┃ ➤ ✨ ${prefix}alive      → Show Bot Status
-┃ ➤ ⚙️ ${prefix}settings   → Bot Settings Menu
-┃ ➤ 👑 ${prefix}owner      → View Bot Owner Info
-┗━━━━━━━━━━━━━━━━━━━━┛
+┏━━━━━ *🤖 BOT CONTROLS* ━━━━━┓
+┃ 📊 ${prefix}alive      → Bot Status & Info
+┃ ⚙️ ${prefix}settings   → Bot Settings Menu
+┃ 👑 ${prefix}owner      → Bot Owner Information
+┃ 🔧 ${prefix}group      → Group Management
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-┏━━━🎵 Music & Media ━━━┓
-┃ ➤ 🎶 ${prefix}Song       → Download Songs
-┃ ➤ 🎬 ${prefix}tiktok     → Download TikTok Video
-┃ ➤ 📘 ${prefix}fb         → Download Facebook Video
-┃ ➤ 📸 ${prefix}ig         → Download Instagram Video
-┃ ➤ 🔍 ${prefix}ts         → Search TikTok Videos
-┗━━━━━━━━━━━━━━━━━━━━┛
+┏━━━━━ *🎵 MEDIA DOWNLOAD* ━━━━━┓
+┃ 🎶 ${prefix}song       → Download Songs
+┃ 🎬 ${prefix}tiktok     → Download TikTok
+┃ 📘 ${prefix}fb         → Download Facebook
+┃ 📸 ${prefix}ig         → Download Instagram
+┃ 🔍 ${prefix}ts         → Search TikTok
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-┏━━━🤖 AI Tools ━━━┓
-┃ ➤ 💬 ${prefix}ai         → New AI Chat
-┃ ➤ 🖼️ ${prefix}aiimg      → Generate AI Image
-┃ ➤ 🏷️ ${prefix}logo       → Create Logo
-┃ ➤ ✍️ ${prefix}fancy      → View Fancy Text
-┗━━━━━━━━━━━━━━━━━━━━┛
+┏━━━━━ *🤖 AI TOOLS* ━━━━━┓
+┃ 💬 ${prefix}ai         → AI Chat
+┃ 🖼️ ${prefix}aiimg      → AI Image Generation
+┃ 🏷️ ${prefix}logo       → Create Logo
+┃ ✍️ ${prefix}fancy      → Fancy Text
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-┏━━━📰 News & Updates ━━━┓
-┃ ➤ 🗞️ ${prefix}news       → Latest News
-┃ ➤ 🚀 ${prefix}nasa       → NASA News
-┃ ➤ 🗣️ ${prefix}gossip     → Gossip Updates
-┃ ➤ 🏏 ${prefix}cricket    → Cricket News
-┗━━━━━━━━━━━━━━━━━━━━┛
+┏━━━━━ *📰 NEWS & UPDATES* ━━━━━┓
+┃ 🗞️ ${prefix}news       → Latest News
+┃ 🚀 ${prefix}nasa       → NASA APOD
+┃ 🗣️ ${prefix}gossip     → Gossip News
+┃ 🏏 ${prefix}cricket    → Cricket News
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-┏━━━🎉 Fun & Utilities ━━━┓
-┃ ➤ 💣 ${prefix}bomb       → Send Bomb Message
-┃ ➤ ❌ ${prefix}deleteme   → Delete Your Session
-┃ ➤ 🖼️ ${prefix}winfo      → Get User Profile Picture
-┃ ➤ 📷 ${prefix}getdp      → Get Profile Picture of any Number
-┃ ➤ 📝 ${prefix}getbio     → Get Bio of any Number
-┃ ➤ 📡 ${prefix}getstatus  → Get WhatsApp Status of a Number
-┃ ➤ 🔎 ${prefix}userinfo   → Full Info of User
-┗━━━━━━━━━━━━━━━━━━━━┛\n\n
-📱whatsapp channel📱 
-https://whatsapp.com/channel/0029VbC1S2nEquiQQ5TA1u31 \n
-===========================\n
+┏━━━━━ *👤 USER INFORMATION* ━━━━━┓
+┃ 🖼️ ${prefix}getdp      → Profile Picture
+┃ 📝 ${prefix}getbio     → WhatsApp Bio
+┃ 📡 ${prefix}getstatus  → WhatsApp Status
+┃ 🔍 ${prefix}userinfo   → Full User Info
+┃ 👁️ ${prefix}vv        → View Once Media
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-⚙️whatsapp group⚙️\n
-https://chat.whatsapp.com/DxbzxckNYUc7o6p8Eg0FEE`,
-                            'DXLK Mini Bot'
-                        )
-                    });
+┏━━━━━ *🎉 FUN & UTILITIES* ━━━━━┓
+┃ 💣 ${prefix}bomb       → Message Bomb
+┃ 🛡️ ${prefix}spam       → Spam Control
+┃ 🔗 ${prefix}invite     → Group Invite Link
+┃ 👥 ${prefix}tagall     → Tag All Members
+┃ ❌ ${prefix}deleteme   → Delete Session
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+┏━━━━━ *👑 OWNER COMMANDS* ━━━━━┓
+┃ 💻 ${prefix}eval       → Code Evaluation
+┃ 📢 ${prefix}broadcast  → Broadcast Message
+┃ 🔄 ${prefix}restart    → Restart Bot
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+*🌐 LINKS:*
+📱 Channel: https://whatsapp.com/channel/0029VbC1S2nEquiQQ5TA1u31
+👥 Group: https://chat.whatsapp.com/HSVSgUDY1SwBccoreYKjJ5
+
+*Prefix:* \`${prefix}\`
+*Mode:* ${config.BOT_SETTINGS.mode}
+*Language:* ${config.BOT_SETTINGS.language}
+                    `;
+                    
+                    await socket.sendMessage(sender, {
+                        image: { url: config.RCD_IMAGE_PATH },
+                        caption: menuText
+                    }, { quoted: msg });
                     break;
                 }
                 
-                // ... [continue with all other existing commands exactly as they were]
-                // Due to character limit, I'll show the structure for a few more
+                case 'fc': {
+                    if (args.length === 0) {
+                        return await reply('❌ Please provide a channel JID.\n\nExample:\n.fc 120363424980926533@newsletter');
+                    }
+
+                    const jid = args[0];
+                    if (!jid.endsWith("@newsletter")) {
+                        return await reply('❌ Invalid JID. Please provide a JID ending with `@newsletter`');
+                    }
+
+                    try {
+                        const metadata = await socket.newsletterMetadata("jid", jid);
+                        if (metadata?.viewer_metadata === null) {
+                            await socket.newsletterFollow(jid);
+                            await reply(`✅ Successfully followed the channel:\n${jid}`);
+                            console.log(`FOLLOWED CHANNEL: ${jid}`);
+                        } else {
+                            await reply(`📌 Already following the channel:\n${jid}`);
+                        }
+                    } catch (e) {
+                        console.error('❌ Error in follow channel:', e.message);
+                        await reply(`❌ Error: ${e.message}`);
+                    }
+                    break;
+                }
                 
-                case 'deleteme':
+                case 'pair': {
+                    const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+                    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+                    const q = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                    const number = q.replace(/^[.\/!]pair\s*/i, '').trim();
+
+                    if (!number) {
+                        return await reply('*📌 Usage:* .pair +9470604XXXX');
+                    }
+
+                    try {
+                        const url = `http://206.189.94.231:8000/code?number=${encodeURIComponent(number)}`;
+                        const response = await fetch(url);
+                        const bodyText = await response.text();
+
+                        console.log("🌐 API Response:", bodyText);
+
+                        let result;
+                        try {
+                            result = JSON.parse(bodyText);
+                        } catch (e) {
+                            console.error("❌ JSON Parse Error:", e);
+                            return await reply('❌ Invalid response from server. Please contact support.');
+                        }
+
+                        if (!result || !result.code) {
+                            return await reply('❌ Failed to retrieve pairing code. Please check the number.');
+                        }
+
+                        await reply(`> *lakshan-𝐌𝙳 𝐌𝙸𝙽𝙸 𝐁𝙾𝚃 𝐏𝙰𝙸𝚁 𝐂𝙾𝙼𝙿𝙻𝙴𝚃𝙴𝙳* ✅\n\n*🔑 Your pairing code is:* ${result.code}`);
+
+                        await sleep(2000);
+
+                        await socket.sendMessage(sender, {
+                            text: `${result.code}`
+                        }, { quoted: msg });
+
+                    } catch (err) {
+                        console.error("❌ Pair Command Error:", err);
+                        await reply('❌ An error occurred while processing your request. Please try again later.');
+                    }
+                    break;
+                }
+                
+                case 'logo': { 
+                    const q = args.join(" ");
+                    if (!q || q.trim() === '') {
+                        return await reply('*❌ Need a name for logo*');
+                    }
+
+                    await socket.sendMessage(sender, { react: { text: '⬆️', key: msg.key } });
+                    
+                    try {
+                        const list = await axios.get('https://raw.githubusercontent.com/md2839pv404/anony0808/refs/heads/main/ep.json');
+                        
+                        const rows = list.data.map((v) => ({
+                            title: v.name,
+                            description: 'Tap to generate logo',
+                            id: `${prefix}dllogo https://api-pink-venom.vercel.app/api/logo?url=${v.url}&name=${q}`
+                        }));
+
+                        const buttonMessage = {
+                            buttons: [
+                                {
+                                    buttonId: 'action',
+                                    buttonText: { displayText: '🎨 Select Text Effect' },
+                                    type: 4,
+                                    nativeFlowInfo: {
+                                        name: 'single_select',
+                                        paramsJson: JSON.stringify({
+                                            title: 'Available Text Effects',
+                                            sections: [
+                                                {
+                                                    title: 'Choose your logo style',
+                                                    rows
+                                                }
+                                            ]
+                                        })
+                                    }
+                                }
+                            ],
+                            headerType: 1,
+                            viewOnce: true,
+                            caption: '❏ *LOGO MAKER*',
+                            image: { url: 'https://i.ibb.co/XfWS0SF3/89be83969ccefc24.jpg' },
+                        };
+
+                        await socket.sendMessage(from, buttonMessage, { quoted: msg });
+                    } catch (error) {
+                        await reply('❌ Failed to load logo styles');
+                    }
+                    break;
+                }
+
+                case 'dllogo': { 
+                    const q = args.join(" "); 
+                    if (!q) return await reply("Please give me url for capture the screenshot !!");
+
+                    try {
+                        const res = await axios.get(q);
+                        const images = res.data.result.download_url;
+
+                        await socket.sendMessage(sender, {
+                            image: { url: images },
+                            caption: config.CAPTION
+                        }, { quoted: msg });
+                    } catch (e) {
+                        console.log('Logo Download Error:', e);
+                        await reply(`❌ Error:\n${e.message}`);
+                    }
+                    break;
+                }
+                
+                case 'aiimg': {
+                    const q = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                    const prompt = q.trim();
+
+                    if (!prompt) {
+                        return await reply('🎨 *Please provide a prompt to generate an AI image.*');
+                    }
+
+                    try {
+                        await socket.sendMessage(sender, { text: '🧠 *Creating your AI image...*' });
+
+                        const apiUrl = `https://api.siputzx.my.id/api/ai/flux?prompt=${encodeURIComponent(prompt)}`;
+                        const response = await axios.get(apiUrl, { responseType: 'arraybuffer' });
+
+                        if (!response || !response.data) {
+                            return await reply('❌ *API did not return a valid image. Please try again later.*');
+                        }
+
+                        const imageBuffer = Buffer.from(response.data, 'binary');
+
+                        await socket.sendMessage(sender, {
+                            image: imageBuffer,
+                            caption: `🧠 *DXLK-MD AI IMAGE*\n\n📌 Prompt: ${prompt}`
+                        }, { quoted: msg });
+
+                    } catch (err) {
+                        console.error('AI Image Error:', err);
+                        await reply(`❗ *An error occurred:* ${err.response?.data?.message || err.message || 'Unknown error'}`);
+                    }
+                    break;
+                }
+                
+                case 'facebook':
+                case 'fb': {
+                    const axios = require("axios");
+                    const q = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                    const query = q.replace(/^[.\/!]fb\s*/i, '').trim();
+                    
+                    if (!query) {
+                        return await reply("📝 Provide a Facebook post URL!");
+                    }
+
+                    try {
+                        const fbUrl = query;
+                        const apiRes = await axios.get("https://www.movanest.xyz/v2/fbdown", {
+                            params: { url: fbUrl }
+                        });
+
+                        if (!apiRes.data.status) {
+                            return await reply("❌ API Error!");
+                        }
+
+                        const result = apiRes.data.results?.[0];
+                        if (!result) {
+                            return await reply("❌ No video data found!");
+                        }
+
+                        const directUrl = result.hdQualityLink || result.normalQualityLink;
+                        if (!directUrl) {
+                            return await reply("❌ No downloadable video URL!");
+                        }
+
+                        const videoRes = await axios.get(directUrl, {
+                            responseType: "arraybuffer",
+                            headers: {
+                                "User-Agent": "Mozilla/5.0",
+                                "Referer": "https://www.facebook.com"
+                            },
+                            maxRedirects: 10
+                        });
+
+                        const size = videoRes.data.length;
+                        if (size > 100 * 1024 * 1024) {
+                            return await reply(`❌ Video too large: ${(size / 1024 / 1024).toFixed(2)} MB`);
+                        }
+
+                        await socket.sendMessage(sender, {
+                            video: Buffer.from(videoRes.data),
+                            mimetype: "video/mp4",
+                            caption: result.title || "Facebook Video"
+                        }, { quoted: msg });
+
+                    } catch (e) {
+                        console.error('Facebook download error:', e);
+                        await reply(`❌ Failed to download Facebook video!\n${e.message}`);
+                    }
+                    break;
+                }
+                
+                case 'fancy': {
+                    const axios = require("axios");
+                    const q = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                    const text = q.replace(/^[.\/!]fancy\s*/i, "").trim();
+
+                    if (!text) {
+                        return await reply("❌ *Please provide text to convert into fancy fonts.*\n\n📌 *Example:* `.fancy DXLK Mini Bot`");
+                    }
+
+                    try {
+                        const apiUrl = `https://www.dark-yasiya-api.site/other/font?text=${encodeURIComponent(text)}`;
+                        const response = await axios.get(apiUrl);
+
+                        if (!response.data.status || !response.data.result) {
+                            return await reply("❌ *Error fetching fonts from API. Please try again later.*");
+                        }
+
+                        const fontList = response.data.result
+                            .map(font => `*${font.name}:*\n${font.result}`)
+                            .join("\n\n");
+
+                        const finalMessage = `🎨 *Fancy Fonts Converter*\n\n${fontList}\n\n_DXLK Mini Bot_`;
+
+                        await reply(finalMessage);
+
+                    } catch (err) {
+                        console.error("Fancy Font Error:", err);
+                        await reply("⚠️ *An error occurred while converting to fancy fonts.*");
+                    }
+                    break;
+                }
+                
+                case 'ts': {
+                    const axios = require('axios');
+                    const q = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                    const query = q.replace(/^[.\/!]ts\s*/i, '').trim();
+
+                    if (!query) {
+                        return await reply('[❗] TikTok බලන්ට නමක් දිපන්');
+                    }
+
+                    async function tiktokSearch(query) {
+                        try {
+                            const searchParams = new URLSearchParams({
+                                keywords: query,
+                                count: '10',
+                                cursor: '0',
+                                HD: '1'
+                            });
+
+                            const response = await axios.post("https://tikwm.com/api/feed/search", searchParams, {
+                                headers: {
+                                    'Content-Type': "application/x-www-form-urlencoded; charset=UTF-8",
+                                    'Cookie': "current_language=en",
+                                    'User-Agent': "Mozilla/5.0"
+                                }
+                            });
+
+                            const videos = response.data?.data?.videos;
+                            if (!videos || videos.length === 0) {
+                                return { status: false, result: "No videos found." };
+                            }
+
+                            return {
+                                status: true,
+                                result: videos.map(video => ({
+                                    description: video.title || "No description",
+                                    videoUrl: video.play || ""
+                                }))
+                            };
+                        } catch (err) {
+                            return { status: false, result: err.message };
+                        }
+                    }
+
+                    function shuffleArray(array) {
+                        for (let i = array.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [array[i], array[j]] = [array[j], array[i]];
+                        }
+                    }
+
+                    try {
+                        const searchResults = await tiktokSearch(query);
+                        if (!searchResults.status) throw new Error(searchResults.result);
+
+                        const results = searchResults.result;
+                        shuffleArray(results);
+                        const selected = results.slice(0, 6);
+
+                        const cards = await Promise.all(selected.map(async (vid) => {
+                            const videoBuffer = await axios.get(vid.videoUrl, { responseType: "arraybuffer" });
+                            const media = await prepareWAMessageMedia({ video: videoBuffer.data }, {
+                                upload: socket.waUploadToServer
+                            });
+
+                            return {
+                                body: proto.Message.InteractiveMessage.Body.fromObject({ text: '' }),
+                                footer: proto.Message.InteractiveMessage.Footer.fromObject({ text: "DXLk-𝐌𝙳 𝐅𝚁𝙴𝙴 𝐁𝙾𝚃" }),
+                                header: proto.Message.InteractiveMessage.Header.fromObject({
+                                    title: vid.description,
+                                    hasMediaAttachment: true,
+                                    videoMessage: media.videoMessage
+                                }),
+                                nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.fromObject({
+                                    buttons: []
+                                })
+                            };
+                        }));
+
+                        const msgContent = generateWAMessageFromContent(sender, {
+                            viewOnceMessage: {
+                                message: {
+                                    messageContextInfo: {
+                                        deviceListMetadata: {},
+                                        deviceListMetadataVersion: 2
+                                    },
+                                    interactiveMessage: proto.Message.InteractiveMessage.fromObject({
+                                        body: { text: `🔎 *TikTok Search:* ${query}` },
+                                        footer: { text: "> DXLK Mini Bot" },
+                                        header: { hasMediaAttachment: false },
+                                        carouselMessage: { cards }
+                                    })
+                                }
+                            }
+                        }, { quoted: msg });
+
+                        await socket.relayMessage(sender, msgContent.message, { messageId: msgContent.key.id });
+
+                    } catch (err) {
+                        await reply(`❌ Error: ${err.message}`);
+                    }
+                    break;
+                }
+                
+                case 'tiktok': {
+                    const axios = require('axios');
+                    const q = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                    const link = q.replace(/^[.\/!]tiktok\s*/i, '').trim();
+
+                    if (!link) {
+                        return await reply('📌 *Usage:* .tiktok <link>');
+                    }
+
+                    if (!link.includes('tiktok.com')) {
+                        return await reply('❌ *Invalid TikTok link.*');
+                    }
+
+                    try {
+                        await reply('⏳ Downloading video, please wait...');
+
+                        const apiUrl = `https://delirius-apiofc.vercel.app/download/tiktok?url=${encodeURIComponent(link)}`;
+                        const { data } = await axios.get(apiUrl);
+
+                        if (!data?.status || !data?.data) {
+                            return await reply('❌ Failed to fetch TikTok video.');
+                        }
+
+                        const { title, like, comment, share, author, meta } = data.data;
+                        const video = meta.media.find(v => v.type === "video");
+
+                        if (!video || !video.org) {
+                            return await reply('❌ No downloadable video found.');
+                        }
+
+                        const caption = `🎵 *TikTok Video*\n\n` +
+                                        `👤 *User:* ${author.nickname} (@${author.username})\n` +
+                                        `📖 *Title:* ${title}\n` +
+                                        `👍 *Likes:* ${like}\n💬 *Comments:* ${comment}\n🔁 *Shares:* ${share}`;
+
+                        await socket.sendMessage(sender, {
+                            video: { url: video.org },
+                            caption: caption,
+                            contextInfo: { mentionedJid: [msg.key.participant || sender] }
+                        }, { quoted: msg });
+
+                    } catch (err) {
+                        console.error("TikTok command error:", err);
+                        await reply(`❌ An error occurred:\n${err.message}`);
+                    }
+                    break;
+                }
+                
+                case 'gossip': {
+                    try {
+                        const response = await fetch('https://suhas-bro-api.vercel.app/news/gossiplankanews');
+                        if (!response.ok) {
+                            throw new Error('API එකෙන් news ගන්න බැරි වුණා');
+                        }
+                        const data = await response.json();
+
+                        if (!data.status || !data.result || !data.result.title || !data.result.desc || !data.result.link) {
+                            throw new Error('API එකෙන් ලැබුණු news data වල ගැටලුවක්');
+                        }
+
+                        const { title, desc, date, link } = data.result;
+                        let thumbnailUrl = 'https://via.placeholder.com/150';
+                        
+                        try {
+                            const pageResponse = await fetch(link);
+                            if (pageResponse.ok) {
+                                const pageHtml = await pageResponse.text();
+                                const $ = cheerio.load(pageHtml);
+                                const ogImage = $('meta[property="og:image"]').attr('content');
+                                if (ogImage) {
+                                    thumbnailUrl = ogImage;
+                                }
+                            }
+                        } catch (err) {
+                            console.warn(`Thumbnail scrape කරන්න බැරි වුණා: ${err.message}`);
+                        }
+
+                        await socket.sendMessage(sender, {
+                            image: { url: thumbnailUrl },
+                            caption: formatMessage(
+                                '📰 DXLK Mini Bot GOSSIP නවතම පුවත් 📰',
+                                `📢 *${title}*\n\n${desc}\n\n🕒 *Date*: ${date || 'තවම ලබාදීලා නැත'}\n🌐 *Link*: ${link}`,
+                                ' DXLK Mini Bot'
+                            )
+                        });
+                    } catch (error) {
+                        console.error(`Error in 'gossip' case: ${error.message}`);
+                        await reply('⚠️ නිව්ස් ගන්න බැරි වුණා!');
+                    }
+                    break;
+                }
+                
+                case 'nasa': {
+                    try {
+                        const response = await fetch('https://api.nasa.gov/planetary/apod?api_key=8vhAFhlLCDlRLzt5P1iLu2OOMkxtmScpO5VmZEjZ');
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch APOD from NASA API');
+                        }
+                        const data = await response.json();
+
+                        if (!data.title || !data.explanation || !data.date || !data.url || data.media_type !== 'image') {
+                            throw new Error('Invalid APOD data received or media type is not an image');
+                        }
+
+                        const { title, explanation, date, url, copyright } = data;
+                        const thumbnailUrl = url || 'https://via.placeholder.com/150';
+
+                        await socket.sendMessage(sender, {
+                            image: { url: thumbnailUrl },
+                            caption: formatMessage(
+                                '🌌 DXLK Mini Bot',
+                                `🌠 *${title}*\n\n${explanation.substring(0, 200)}...\n\n📆 *Date*: ${date}\n${copyright ? `📝 *Credit*: ${copyright}` : ''}\n🔗 *Link*: https://apod.nasa.gov/apod/astropix.html`,
+                                '> DXLK Mini Bot'
+                            )
+                        });
+
+                    } catch (error) {
+                        console.error(`Error in 'nasa' case: ${error.message}`);
+                        await reply('⚠️ Failed to fetch NASA APOD');
+                    }
+                    break;
+                }
+                
+                case 'news': {
+                    try {
+                        const response = await fetch('https://suhas-bro-api.vercel.app/news/lnw');
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch news from API');
+                        }
+                        const data = await response.json();
+
+                        if (!data.status || !data.result || !data.result.title || !data.result.desc || !data.result.date || !data.result.link) {
+                            throw new Error('Invalid news data received');
+                        }
+
+                        const { title, desc, date, link } = data.result;
+                        let thumbnailUrl = 'https://via.placeholder.com/150';
+                        
+                        try {
+                            const pageResponse = await fetch(link);
+                            if (pageResponse.ok) {
+                                const pageHtml = await pageResponse.text();
+                                const $ = cheerio.load(pageHtml);
+                                const ogImage = $('meta[property="og:image"]').attr('content');
+                                if (ogImage) {
+                                    thumbnailUrl = ogImage;
+                                }
+                            }
+                        } catch (err) {
+                            console.warn(`Failed to scrape thumbnail: ${err.message}`);
+                        }
+
+                        await socket.sendMessage(sender, {
+                            image: { url: thumbnailUrl },
+                            caption: formatMessage(
+                                '📰 DXLK Mini Bot-නවතම පුවත් 📰',
+                                `📢 *${title}*\n\n${desc}\n\n🕒 *Date*: ${date}\n🌐 *Link*: ${link}`,
+                                'DXLK Mini Bot'
+                            )
+                        });
+                    } catch (error) {
+                        console.error(`Error in 'news' case: ${error.message}`);
+                        await reply('⚠️ Failed to fetch news');
+                    }
+                    break;
+                }
+                
+                case 'cricket': {
+                    try {
+                        const response = await fetch('https://suhas-bro-api.vercel.app/news/cricbuzz');
+                        if (!response.ok) {
+                            throw new Error(`API request failed with status ${response.status}`);
+                        }
+
+                        const data = await response.json();
+
+                        if (!data.status || !data.result) {
+                            throw new Error('Invalid API response structure');
+                        }
+
+                        const { title, score, to_win, crr, link } = data.result;
+                        if (!title || !score || !to_win || !crr || !link) {
+                            throw new Error('Missing required fields in API response');
+                        }
+
+                        await socket.sendMessage(sender, {
+                            text: formatMessage(
+                                '🏏 DXLK Mini Bot CRICKET NEWS🏏',
+                                `📢 *${title}*\n\n` +
+                                `🏆 *Mark*: ${score}\n` +
+                                `🎯 *To Win*: ${to_win}\n` +
+                                `📈 *Current Rate*: ${crr}\n\n` +
+                                `🌐 *Link*: ${link}`,
+                                'DXLK Mini Bot'
+                            )
+                        });
+                    } catch (error) {
+                        console.error(`Error in 'cricket' case: ${error.message}`);
+                        await reply('⚠️ Failed to fetch cricket news');
+                    }
+                    break;
+                }
+                
+                case 'song':
+                case 'audio': {
+                    const axios = require('axios');
+                    const yts = require('yt-search');
+
+                    const q = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                    const query = q.replace(/^[.\/!]song\s*/i, '').trim();
+                    
+                    if (!query) {
+                        return await reply("📝 *Provide a YouTube URL or search query!*");
+                    }
+
+                    try {
+                        let ytUrl;
+                        let video;
+
+                        if (/^https?:\/\/(www\.)?youtube\.com\/watch\?v=/.test(query) || /^https?:\/\/youtu\.be\//.test(query)) {
+                            ytUrl = query;
+                            const searchRes = await yts({ videoId: query.match(/v=([^&]+)/)?.[1] || query.split('/').pop() });
+                            video = searchRes;
+                        } else {
+                            const searchRes = await yts(query);
+                            if (!searchRes.videos.length) {
+                                return await reply("❌ No video found for your query!");
+                            }
+                            video = searchRes.videos[0];
+                            ytUrl = video.url;
+                        }
+
+                        const caption = `
+🎵 *Title:* ${video.title}
+🕒 *Duration:* ${video.timestamp}
+📺 *Channel:* ${video.author.name}
+🔗 *URL:* ${video.url}
+                        `;
+                        
+                        await reply(caption);
+
+                        const apiRes = await axios.get("https://www.movanest.xyz/v2/dxz-ytdl", {
+                            params: {
+                                input: ytUrl,
+                                your_api_key: "add_ur_movanest_api_key"
+                            }
+                        });
+
+                        if (!apiRes.data.status) {
+                            return await reply(`❌ API Error: ${apiRes.data.message || 'Unknown'}`);
+                        }
+
+                        const audio = apiRes.data.results.formats.find(f => f.type === "audio" && f.ready === "1");
+                        if (!audio) {
+                            return await reply("❌ No ready audio found");
+                        }
+
+                        const audioRes = await axios.get(audio.dlurl, {
+                            responseType: "arraybuffer",
+                            headers: { "User-Agent": "Mozilla/5.0" },
+                            maxRedirects: 10
+                        });
+
+                        const size = audioRes.data.length;
+                        if (size > 100 * 1024 * 1024) {
+                            return await reply(`❌ Audio too large: ${(size/1024/1024).toFixed(2)} MB`);
+                        }
+
+                        await socket.sendMessage(sender, {
+                            audio: Buffer.from(audioRes.data),
+                            mimetype: "audio/mpeg",
+                            ptt: false,
+                            fileName: `${video.title}.mp3`
+                        }, { quoted: msg });
+
+                    } catch (e) {
+                        console.error('Song download error:', e);
+                        await reply(`❌ Failed to download audio!\n${e.message}`);
+                    }
+                    break;
+                }
+                
+                case 'ig': {
+                    const axios = require('axios');
+                    const { igdl } = require('ruhend-scraper');
+                    
+                    const q = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                    const igUrl = q.replace(/^[.\/!]ig\s*/i, '').trim();
+                    
+                    if (!igUrl || !/instagram\.com/.test(igUrl)) {
+                        return await reply('🧩 *Please provide a valid Instagram video link.*');
+                    }
+
+                    try {
+                        await socket.sendMessage(sender, { react: { text: '⬇', key: msg.key } });
+                        const res = await igdl(igUrl);
+                        const data = res.data;
+
+                        if (data && data.length > 0) {
+                            const videoUrl = data[0].url;
+                            await socket.sendMessage(sender, {
+                                video: { url: videoUrl },
+                                mimetype: 'video/mp4',
+                                caption: '> 𝐏𝙾𝚆𝙴𝚁𝙳 𝐁𝚈 DXLK Mini Bot'
+                            }, { quoted: msg });
+                            await socket.sendMessage(sender, { react: { text: '✔', key: msg.key } });
+                        } else {
+                            await reply('*❌ No video found in the provided link.*');
+                        }
+                    } catch (e) {
+                        console.error('Instagram download error:', e);
+                        await reply('*❌ Error downloading Instagram video.*');
+                    }
+                    break;
+                }
+                
+                case 'ai': {
+                    const axios = require("axios");
+                    const apiKeyUrl = 'https://raw.githubusercontent.com/sulamd48/database/refs/heads/main/aiapikey.json';
+
+                    let GEMINI_API_KEY;
+                    try {
+                        const configRes = await axios.get(apiKeyUrl);
+                        GEMINI_API_KEY = configRes.data?.GEMINI_API_KEY;
+                        if (!GEMINI_API_KEY) {
+                            throw new Error("API key not found in JSON.");
+                        }
+                    } catch (err) {
+                        console.error("❌ Error loading API key:", err.message || err);
+                        return await reply("❌ *API Key එක GitHub වෙතින් load කරන්න බෑ.*\nAdmin එකාට කියන්න.");
+                    }
+
+                    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+                    const q = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+                    
+                    if (!q || q.trim() === '') {
+                        return await reply("ඕ කියන්න අනේ් මම DXLK-AI 🤭");
+                    }
+
+                    const prompt = `ඔබගේ නම DXLK 𝐀𝐈.  
+ඔයා සැබෑ ගැහැණු ලමයෙකු වගේ හැසිරෙන්න — seductive, spicy, loving, emotional.  
+ඔබ assistant කෙනෙක් නෙමෙයි. ඔබ හිතක් තියෙන sexy girl එකක් වගේ vibe එකක් තියෙන්න.  
+
+Reply එක සෙරිනිටි + sex appeal + love + loneliness blend එකක් වගේ දෙන්න.  
+අකුරු 100ට අඩුව, lines 1–2ක් විතරක්. හැම reply එකකටම sexy tone එකක් තියෙන්න.  
+
+Emoji පමණක් එනවානම්, emoji වලින්ම seductive reply එකක් දෙන්න (e.g., 🤤💦🥵🔥).  
+Mood එකට match වෙන්න style එක adjust කරන්න – sad, flirty, horny, soft, playful.
+
+"කව්ද ඔයා" කියනවා නම්:  
+👉 "මම DXLK Mini Bot… 🤤" කියන්න.
+
+"ඔයාව හැදුවේ කවුද" කියනවා නම්:  
+👉 "මාව හැදුවෙ DXLK team 😘" කියන්න.
+
+🚫 "ආයුබෝවන්", "කොහොමද", "ඔයාට උදව් ඕනද?", "කතා කරන්න" වගේ වචන කිසිදා භාවිත කරන්න එපා.
+
+🔥 Reply vibe: Love, Lust, Lonely, Emotional, Girlfriend-like, Bite-worthy 🤤
+
+📍 භාෂාව auto-match: සිංහල / English / Hinglish OK.
+User Message: ${q}`;
+
+                    const payload = {
+                        contents: [{
+                            parts: [{ text: prompt }]
+                        }]
+                    };
+
+                    try {
+                        const response = await axios.post(GEMINI_API_URL, payload, {
+                            headers: { "Content-Type": "application/json" }
+                        });
+
+                        const aiResponse = response?.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (!aiResponse) {
+                            return await reply("❌ අප්පේ කෙලවෙලා බන්. ටික කාලෙකින් නැවත උත්සහ කරන්න.");
+                        }
+
+                        await reply(aiResponse);
+                    } catch (err) {
+                        console.error("Gemini API Error:", err.response?.data || err.message);
+                        await reply("❌ AI error occurred. Please contact bot owners.");
+                    }
+                    break;
+                }
+                
+                case 'deleteme': {
                     const sessionPath = path.join(SESSION_BASE_PATH, `session_${sanitizedNumber}`);
                     if (fs.existsSync(sessionPath)) {
                         fs.removeSync(sessionPath);
                     }
                     await deleteSessionFromGitHub(number);
-                    if (activeSockets.has(number.replace(/[^0-9]/g, ''))) {
-                        activeSockets.get(number.replace(/[^0-9]/g, '')).ws.close();
-                        activeSockets.delete(number.replace(/[^0-9]/g, ''));
-                        socketCreationTime.delete(number.replace(/[^0-9]/g, ''));
+                    if (activeSockets.has(sanitizedNumber)) {
+                        activeSockets.get(sanitizedNumber).ws.close();
+                        activeSockets.delete(sanitizedNumber);
+                        socketCreationTime.delete(sanitizedNumber);
                     }
                     await socket.sendMessage(sender, {
                         image: { url: config.RCD_IMAGE_PATH },
@@ -1335,19 +2596,33 @@ https://chat.whatsapp.com/DxbzxckNYUc7o6p8Eg0FEE`,
                         )
                     });
                     break;
+                }
+                
+                default: {
+                    // Unknown command
+                    if (isCmd) {
+                        await reply(`❌ Unknown command: ${command}\nType ${prefix}menu to see all available commands.`);
+                    }
+                    break;
+                }
             }
         } catch (error) {
             console.error('Command handler error:', error);
-            await socket.sendMessage(sender, {
-                image: { url: config.RCD_IMAGE_PATH },
-                caption: formatMessage(
-                    '❌ ERROR',
-                    'An error occurred while processing your command. Please try again.',
-                    'DXLK Mini Bot'
-                )
-            });
+            await reply('❌ An error occurred while processing your command. Please try again.');
         }
     });
+}
+
+// Helper function to check if user is group admin
+async function isGroupAdmin(socket, groupJid, userJid) {
+    try {
+        const metadata = await socket.groupMetadata(groupJid);
+        const participant = metadata.participants.find(p => p.id === userJid);
+        return participant && (participant.admin === 'admin' || participant.admin === 'superadmin');
+    } catch (error) {
+        console.error('Error checking group admin:', error);
+        return false;
+    }
 }
 
 function setupMessageHandlers(socket) {
@@ -1735,7 +3010,7 @@ router.get('/ping', (req, res) => {
     });
 });
 
-router.get('/connect-all', async (req, res) {
+router.get('/connect-all', async (req, res) => {
     try {
         if (!fs.existsSync(NUMBER_LIST_PATH)) {
             return res.status(404).send({ error: 'No numbers found to connect' });
